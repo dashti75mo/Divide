@@ -1,0 +1,259 @@
+#include <Trade/Trade.mqh>
+
+CTrade trade;
+
+ulong posTicket = 0;
+datetime prev_time;
+
+int cur_positions = 0;
+int bar_counter = 0;
+int consecutive_bars = 1;
+bool condition_fulfilled = true;
+input double slBuy = 100; // Default value for Stop Loss for Buy
+input double tpBuy = 150; // Default value for Take Profit for Buy
+input double slSell = 100; // Default value for Stop Loss for Sell
+input double tpSell = 150; // Default value for Take Profit for Sell
+datetime exp_date = D'2024.03.19';
+
+bool flag = true;
+
+int OnInit() { 
+   //Print("AutoTradeBot Initialized");   
+   
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason) {
+   
+   //Print("AutoTradeBot Deinitialized");
+}
+
+bool isNewBar(const bool print_log = true) { 
+   /*if(flag) {
+      prev_time = iTime(_Symbol, PERIOD_CURRENT, 0); 
+      flag = false;
+      return(false);
+   }*/
+   
+   datetime currbar_time = iTime(_Symbol, PERIOD_CURRENT, 0); 
+   
+   // If open time changes, a new bar has arrived. 
+   if(currbar_time > prev_time) {
+      prev_time = currbar_time;  
+      return (true); 
+   } 
+   
+   return (false); 
+}
+
+
+void OnTick() {
+
+   /*if(TimeCurrent() > exp_date) {
+      return;
+   }*/
+   //code space
+   static double LastStopMovingAverageValue;
+  
+   //define Ask, Bid
+   double Ask = NormalizeDouble(SymbolInfoDouble(_Symbol,SYMBOL_ASK),_Digits);
+   double Bid = NormalizeDouble(SymbolInfoDouble(_Symbol,SYMBOL_BID),_Digits);
+
+   int handleHandler = iBands(Symbol(), Period(), 30, 0, 2, PRICE_CLOSE);        //اطلاعات بول?نگر بند
+   
+   double UpperBandArray[];
+   double LowerBandArray[];
+   double MidBandArray[];
+   
+   CopyBuffer(handleHandler, 0, 0, 2, MidBandArray);
+   CopyBuffer(handleHandler, 1, 0, 2, UpperBandArray);
+   CopyBuffer(handleHandler, 2, 0, 2, LowerBandArray);
+
+   double open  = iOpen(Symbol(), Period(), 0);
+   double high  = iHigh(Symbol(), Period(), 0);
+   double low   = iLow(Symbol(), Period(), 0);   
+   double close = iClose(Symbol(), Period(), 0);
+   
+      double myMovingAverageArray[];
+   
+   //تنظ?م آرا?ه از نزول کندل ها
+   ArraySetAsSeries(myMovingAverageArray,true);
+   
+     //اطلاعات MovingAverage
+     int movingAverageDefinition = iMA(_Symbol,_Period,16,0,MODE_SMA,PRICE_CLOSE);      //عدد 20 شماره موو?نگ هست ا?نجا<<<<<<<<<
+     
+     //Defined EA, oneline, from candle 0,for 3 candles, store in Array
+     CopyBuffer(movingAverageDefinition,0,0,3,myMovingAverageArray);
+/*     
+     // محسابه movingaverage برا? کندل 1
+     double StopMovingAverageValue = myMovingAverageArray[1];
+     
+     //if stop is below Bid Price
+     if (StopMovingAverageValue<Bid)
+     
+     
+     //if stop is above last value
+     if (StopMovingAverageValue > LastStopMovingAverageValue)
+     
+     {
+     
+      CheckSMABuyTrailingStop (Ask, StopMovingAverageValue);
+  //    CheckSMABuyTrailingStop2 (Bid, StopMovingAverageValue);
+       // assain current value for the next function call
+      LastStopMovingAverageValue = StopMovingAverageValue;
+     
+     
+     }*/
+   
+   //Print("Open Price: " + DoubleToString(open) + ", Close Price: " + DoubleToString(close));
+   //Print("Low Price: " + DoubleToString(low) + ", High Price: " + DoubleToString(high));
+   //Print("Upper Band: " + DoubleToString(UpperBandArray[0]) + ", Lower Band: " + DoubleToString(LowerBandArray[0]));
+   
+   bool wasDownThenUpBBTop = (open < UpperBandArray[1]) && (close > UpperBandArray[1]) ? true : false;
+   if(wasDownThenUpBBTop) {
+    //  Print("Was bellow the Upper Band then went above it");
+   }
+   bool wasUpThenDownBBTop = (open > UpperBandArray[1]) && (close < UpperBandArray[1]) ? true : false;
+   if(wasUpThenDownBBTop) {
+     // Print("Was above the Upper Band then went bellow it");
+   }
+   bool wasUpthenDownBBBottom = (open > LowerBandArray[1]) && (close < LowerBandArray[1]) ? true : false;
+   if(wasUpthenDownBBBottom) {
+     // Print("Was above the Lower Band then went bellow it");
+   }
+   bool wasDownThenUpBBBottom = (open < LowerBandArray[1]) && (close > LowerBandArray[1]) ? true : false;
+   if(wasDownThenUpBBBottom) {
+      //Print("Was bellow the Upper Band then went above it");
+   }
+   
+   // If a Position in open
+   if(posTicket > 0 && PositionSelectByTicket(posTicket)) {
+      int posType = (int)PositionGetInteger(POSITION_TYPE);
+      
+      // Calculate n consecutive bars condition
+      if(isNewBar() && !condition_fulfilled) {
+         if(posType == POSITION_TYPE_SELL) {   
+            double lowT   = iLow(Symbol(), Period(), 1); 
+            if(lowT < UpperBandArray[0]) {
+               bar_counter++;
+            }
+            else {
+               bar_counter = 0;
+            }
+            
+            if(bar_counter == consecutive_bars) {
+               condition_fulfilled = true;  
+            }        
+         }
+         else if(posType == POSITION_TYPE_SELL) {
+            double highT   = iHigh(Symbol(), Period(), 1); 
+            if(highT < LowerBandArray[0]) {
+               bar_counter++;
+            }
+            else {
+               bar_counter = 0;
+            }
+            
+            if(bar_counter == consecutive_bars) {
+               condition_fulfilled = true;
+             //  Print("Consecutive bars condition fulfilled");
+            }     
+         }
+      }
+   
+  /*    // Update Stop Losses
+      if(posType == POSITION_TYPE_BUY) {
+         if(condition_fulfilled) {
+            trade.PositionModify(posTicket, MidBandArray[1], 0);
+         }
+         else {
+            trade.PositionModify(posTicket, LowerBandArray[1], 0);
+         }           
+      }
+      else if(posType == POSITION_TYPE_SELL) {
+         if(condition_fulfilled) {
+            trade.PositionModify(posTicket, MidBandArray[1], 0);
+         }
+         else {
+            trade.PositionModify(posTicket, UpperBandArray[1], 0);
+         }   
+      }  */
+   }
+     double lowT   = iLow(Symbol(), Period(), 1);          //کمتر?ن ق?مت معامله
+     double highT   = iHigh(Symbol(), Period(), 1);         // ب?شتر ق?مت معامله
+     
+     
+     double Lots = 0.01;
+   if(wasDownThenUpBBTop && posTicket == 0) {
+      // Open Buy Position
+      cur_positions = 2;
+       double buysl = Ask - slBuy * _Point;     //محسابه پ?
+       double buytp = Ask + tpBuy * _Point;     //محسابه پ?پ
+    //  trade.Buy(0.01, _Symbol, 0,(Bid+150 * _Point),0, NULL);
+
+       trade.Buy(0.01, _Symbol, 0,  buysl,buytp, NULL);
+      posTicket = trade.ResultOrder();
+      prev_time = iTime(_Symbol, PERIOD_CURRENT, 0); 
+ //     LastStopMovingAverageValue=0;
+   //   Print("Open new buy positon");
+   }
+   else if(wasUpthenDownBBBottom && posTicket == 0) {
+      // Open Sell Position
+      double sellsl = Bid + slSell * _Point;       //Sell 
+      double sellTp = Bid - tpSell * _Point;       //Sell 
+      
+         //   trade.Sell(0.01, _Symbol, 0,(Ask+150 * _Point),0, NULL);
+
+      cur_positions = 2;
+      trade.Sell(0.01, _Symbol, 0, sellsl,sellTp, NULL);
+      posTicket = trade.ResultOrder();
+      prev_time = iTime(_Symbol, PERIOD_CURRENT, 0);
+  //    LastStopMovingAverageValue=0;
+    //  Print("Open new sell positon");
+    if (posTicket<=0)
+{
+
+}
+
+   }
+   else {
+      // No Action
+   }
+   
+   return;
+}
+
+void OnTrade() {
+
+   int numberOfPositions = PositionsTotal();
+   
+   if(numberOfPositions = cur_positions) {
+    //  Print("Close positon");
+      posTicket = 0;   
+      cur_positions = 0;
+      bar_counter = 0;
+      condition_fulfilled = true;
+   }
+}
+   void CheckSMABuyTrailingStop(double Ask, double StopMovingAverageValue)
+ {  
+   //go through all positions
+   for(int i=PositionsTotal()-1; i>=0; i--)
+   {
+     string symbol=PositionGetSymbol(i);  //get the symbol of the position
+     
+     if (_Symbol==symbol) // if currnecy pair is equal
+     {
+      // get ticket number
+      ulong PositionTicket=PositionGetInteger(POSITION_TICKET);
+      
+      //Calculate the current stop loss
+      double CurrentStopLoss=PositionGetDouble(POSITION_SL);
+      //if current stoploss is below the sma value
+      if (CurrentStopLoss<StopMovingAverageValue)
+      {
+      trade.PositionModify(PositionTicket,StopMovingAverageValue,0);                    
+      }
+     }
+   }
+ } 
